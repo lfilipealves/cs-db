@@ -1,20 +1,23 @@
 const express = require("express");
+const prisma = require("./database");
+
 const app = express();
 const port = 3001;
 
 app.use(express.json());
 
-const routes = require("./routes"); // Importando rotas
-const { login } = require("./login"); // Importando login
-const users = require("./database"); // Importando Usuários
+const routes = require("./routes");
+const { login } = require("./login"); 
+// const users = require("./database"); 
 
-// Rota pública para login
-app.post("/user/login", login);
 
-// Middleware de rotas protegidas
+
+// app.post("/user/login", login);
+
+
 app.use("/user", routes);
 
-// Iniciar servidor
+
 app.listen(port, () => {
   console.log(`Servidor rodando na porta http://localhost:${port}`);
 });

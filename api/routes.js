@@ -1,11 +1,12 @@
 const express = require("express");
 const axios = require("axios");
 const authenticateToken = require("./midleware");
-const { users } = require("./database");
+const prisma = require("./database")
 
 const router = express.Router();
 
-// Função para buscar endereço pelo CEP
+
+
 const searchAddress = async (cep) => {
   try {
     const response = await axios.get(`https://viacep.com.br/ws/${cep}/json/`);
@@ -22,9 +23,12 @@ const searchAddress = async (cep) => {
   }
 };
 
-// Rota protegida para buscar todos os usuários
-router.get("/", authenticateToken, async (req, res) => {
+
+router.get("/", async (req, res) => {
   try {
+
+    const users = await prisma.user.findMany();
+
     const usersWithState = await Promise.all(
       users.map(async (user) => {
         const endereco = await searchAddress(user.cep);
@@ -43,17 +47,22 @@ router.get("/", authenticateToken, async (req, res) => {
   }
 });
 
-// Rota pública para buscar um usuário específico
 
-router.get("/:id", authenticateToken, async (req, res) => {
+
+router.get("/:id",  async (req, res) => {
   const id = parseInt(req.params.id);
-  const user = users.find((u) => u.id === id);
+
+  try {
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+    });
 
   if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
 
-  const endereco = user.logradouro
-    ? { logradouro: user.logradouro, cidade: user.cidade, estado: user.estado }
-    : await searchAddress(user.cep);
+
+
+   const endereco = await searchAddress(user.cep)
 
   res.json({
     id: user.id,
@@ -64,64 +73,125 @@ router.get("/:id", authenticateToken, async (req, res) => {
     cidade: endereco?.cidade || "Cidade não encontrada",
     estado: endereco?.estado || "Estado não encontrado",
   });
+} catch (error) {
+  console.error("Erro ao buscar usuário:", error);
+  res.status(500).json({error: "Erro interno do servidor"})
+}
+
 });
 
-// Rota protegida para adicionar usuário
-router.post("/addUser", authenticateToken, async (req, res) => {
+
+
+router.post("/addUser", async (req, res) => {
   console.log("Corpo da requisição recebido:", req.body);
 
-  const { name, email, cep } = req.body;
-  if (!name || !email || !cep) {
-    return res.status(400).json({ error: "Por favor insira nome e email" });
-  }
+  try {
+    const { name, email, cep } = req.body
+  
+    if (!name || !email || !cep) {
+      return res.status(400).json({ error: "Por favor insira nome, email e cep" });
+    }
 
   const endereco = await searchAddress(cep);
-  if (!endereco)
+  if (!endereco) {
     return res.status(400).json({ error: "Cep inválido ou não existe" });
 
-  const newID = users.length > 0 ? Math.max(...users.map((u) => u.id)) + 1 : 1;
-  const newUser = {
-    id: newID,
+}
+
+  const newUser =  await prisma.user.create({
+    data: {
     name,
     email,
     cep,
     logradouro: endereco.logradouro,
     cidade: endereco.cidade,
     estado: endereco.estado,
-  };
-
-  users.push(newUser);
-  res.status(201).json(newUser);
+  }
 });
 
-// Rota protegida para atualizar usuário
-router.put("/:id", authenticateToken, async (req, res) => {
+res.status(201).json(newUser);
+  } catch (error) {
+    console.error("Erro ao criar usuário:", error);
+    res.status(500).json({error: "Erro interno do servidor"});
+  }
+})
+
+
+
+router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   const { name, email, cep } = req.body;
 
-  const userIndex = users.findIndex((u) => u.id === id);
-  if (userIndex === -1)
-    return res.status(404).json({ error: "Usuário não encontrado" });
+  try {
+    const userExists = await prisma.user.findUnique({
+      where: {id: Number(id)},
+    });
 
-  if (!name || !email || !cep) {
-    return res.status(400).json({ error: "Por favor insira nome e email" });
+    if (!userExists) {
+      return res.status(404).json({error: "Usuário não encontrado"});
+    }
+  
+    let endereco = {
+        logradouro: userExists.logradouro,
+        cidade: userExists.cidade,
+        estado: userExists.estado,
+    }
+
+
+
+    if(cep && cep !== userExists.cep) {
+      const novoEndereco = await searchAddress(cep);
+      if(!novoEndereco) {
+        return res.status(400).json({error: "CEP inválido ou não encontrado"})
+      }
+      endereco = novoEndereco
+    }
+
+    const updateUser = await prisma.user.update({
+      where: { id: Number(id) },
+      data: {
+        name: name || userExists.name,
+        email: email || userExists.email,
+        cep: cep || userExists.cep,
+        logradouro: endereco.logradouro || userExists.logradouro,
+        cidade: endereco.cidade || userExists.cidade,
+        estado: endereco.estado || userExists.estado,
+      },
+    });
+
+    res.json(updateUser);
+  } catch (error) {
+    console.error("Erro ao atualizar o usuário:", error);
+    res.status(500).json({error: "Erro interno do servidor"});
   }
-
-  const endereco = await searchAddress(cep);
-  if (!endereco)
-    return res.status(400).json({ error: "Cep inválido ou não existe" });
-
-  users[userIndex] = {
-    id,
-    name,
-    email,
-    cep,
-    logradouro: endereco.logradouro,
-    cidade: endereco.cidade,
-    estado: endereco.estado,
-  };
-
-  res.json(users[userIndex]);
 });
 
-module.exports = router;
+  module.exports = router;
+  
+
+
+//   const userIndex = users.findIndex((u) => u.id === id);
+//   if (userIndex === -1)
+//     return res.status(404).json({ error: "Usuário não encontrado" });
+
+//   if (!name || !email || !cep) {
+//     return res.status(400).json({ error: "Por favor insira nome e email" });
+//   }
+
+//   const endereco = await searchAddress(cep);
+//   if (!endereco)
+//     return res.status(400).json({ error: "Cep inválido ou não existe" });
+
+//   users[userIndex] = {
+//     id,
+//     name,
+//     email,
+//     cep,
+//     logradouro: endereco.logradouro,
+//     cidade: endereco.cidade,
+//     estado: endereco.estado,
+//   };
+
+//   res.json(users[userIndex]);
+// });
+

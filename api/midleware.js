@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 
 const secretKey = process.env.JWT_SECRET || "seuSegredoSeguro";
 
-// Middleware para autenticação
+// Autenticação do token
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
@@ -23,3 +23,6 @@ const authenticateToken = (req, res, next) => {
 };
 
 module.exports = authenticateToken;
+
+
+// Midleware usado para comunicação entre uma aplicação e outra, atua como ponte entre (ferramentas (front com back usando React e Node), banco de dados e api )

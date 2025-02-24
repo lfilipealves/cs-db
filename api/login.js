@@ -1,13 +1,15 @@
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
-const { users } = require("./database");
+
+
 
 const secretKey = process.env.JWT_SECRET || "seuSegredoSeguro";
 
 const login = (req, res) => {
   const { email } = req.body;
 
-  // Verifica se o usuário existe no "banco de dados"
+  // Usuario existe no banco de dados?
+
   const user = users.find((u) => u.email === email);
 
   if (!user) {
