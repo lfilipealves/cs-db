@@ -6,10 +6,12 @@ const prisma = new PrismaClient();
 async function searchAddress(cep) {
   try {
     const response = await axios.get(`https://viacep.com.br/ws/${cep}/json/`);
+
     if (response.data.erro) return null;
 
     return {
-      logradouro: response.data.logradouro,
+      street: response.data.logradouro,
+      neighborhood: response.data.bairro,
       cidade: response.data.localidade,
       estado: response.data.uf,
     };
@@ -39,6 +41,7 @@ async function main() {
       return {
         ...user,
         logradouro: endereco?.logradouro || null,
+        bairro: endereco?.logradouro || null,
         cidade: endereco?.cidade || null,
         estado: endereco?.estado || null,
       };

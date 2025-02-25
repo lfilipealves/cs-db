@@ -11,10 +11,10 @@ const searchAddress = async (cep) => {
     if (response.data.erro) return null;
 
     return {
-      logradouro: response.data.logradouro,
-      bairro: response.data.bairro,
-      cidade: response.data.localidade,
-      estado: response.data.uf,
+      street: response.data.logradouro,
+      neighborhood: response.data.bairro,
+      city: response.data.localidade,
+      state: response.data.uf,
     };
   } catch (error) {
     console.error("Erro ao buscar CEP:", error.message);
@@ -24,140 +24,131 @@ const searchAddress = async (cep) => {
 
 router.get("/", async (req, res) => {
   try {
-    const users = await prisma.user.findMany();
+    const users = await prisma.user.findMany({
+      include: { addresses: true}
+    });
 
-    const usersWithState = await Promise.all(
-      users.map(async (user) => {
-        const endereco = await searchAddress(user.cep);
-        return {
-          ...user,
-          logradouro: endereco?.logradouro,
-          bairro: endereco?.bairro,
-          cidade: endereco?.cidade,
-          estado: endereco?.estado,
-        };
-      })
-    );
 
-    res.json(usersWithState);
+    res.json(users);
   } catch (error) {
-    res.status(500).json({ error: "Erro ao buscar usuários" });
+    res.status(500).json({ error: "Erro ao buscar usuários:", error });
+    res.status(500).json({error: "Erro ao buscar usuários"});
   }
 });
 
-router.get("/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
+// router.get("/:id", authenticateToken, async (req, res) => {
+//   const id = parseInt(req.params.id);
 
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id },
-    });
+//   try {
+//     const user = await prisma.user.findUnique({
+//       where: { id },
+//     });
 
-    if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
+//     if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
 
-    const endereco = await searchAddress(user.cep);
+//     const endereco = await searchAddress(user.cep);
 
-    res.json({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      cep: user.cep,
-      logradouro: endereco?.logradouro || "Endereço não encontrado",
-      bairro: endereco?.bairro || "Bairro não encontrado",
-      cidade: endereco?.cidade || "Cidade não encontrada",
-      estado: endereco?.estado || "Estado não encontrado",
-    });
-  } catch (error) {
-    console.error("Erro ao buscar usuário:", error);
-    res.status(500).json({ error: "Erro interno do servidor" });
-  }
-});
+//     res.json({
+//       id: user.id,
+//       name: user.name,
+//       email: user.email,
+//       cep: user.cep,
+//       logradouro: endereco?.logradouro || "Endereço não encontrado",
+//       bairro: endereco?.bairro || "Bairro não encontrado",
+//       cidade: endereco?.cidade || "Cidade não encontrada",
+//       estado: endereco?.estado || "Estado não encontrado",
+//     });
+//   } catch (error) {
+//     console.error("Erro ao buscar usuário:", error);
+//     res.status(500).json({ error: "Erro interno do servidor" });
+//   }
+// });
 
-router.post("/addUser", async (req, res) => {
-  console.log("Corpo da requisição recebido:", req.body);
+// router.post("/addUser", authenticateToken, async (req, res) => {
+//   console.log("Corpo da requisição recebido:", req.body);
 
-  try {
-    const { name, email, cep } = req.body;
+//   try {
+//     const { name, email, cep } = req.body;
 
-    if (!name || !email || !cep) {
-      return res
-        .status(400)
-        .json({ error: "Por favor insira nome, email e cep" });
-    }
+//     if (!name || !email || !cep) {
+//       return res
+//         .status(400)
+//         .json({ error: "Por favor insira nome, email e cep" });
+//     }
 
-    const endereco = await searchAddress(cep);
-    if (!endereco) {
-      return res.status(400).json({ error: "Cep inválido ou não existe" });
-    }
+//     const endereco = await searchAddress(cep);
+//     if (!endereco) {
+//       return res.status(400).json({ error: "Cep inválido ou não existe" });
+//     }
 
-    const newUser = await prisma.user.create({
-      data: {
-        name,
-        email,
-        cep,
-        logradouro: endereco.logradouro,
-        bairro: endereco.bairro,
-        cidade: endereco.cidade,
-        estado: endereco.estado,
-      },
-    });
+//     const newUser = await prisma.user.create({
+//       data: {
+//         name,
+//         email,
+//         cep,
+//         logradouro: endereco.logradouro,
+//         bairro: endereco.bairro,
+//         cidade: endereco.cidade,
+//         estado: endereco.estado,
+//       },
+//     });
 
-    res.status(201).json(newUser);
-  } catch (error) {
-    console.error("Erro ao criar usuário:", error);
-    res.status(500).json({ error: "Erro interno do servidor" });
-  }
-});
+//     res.status(201).json(newUser);
+//   } catch (error) {
+//     console.error("Erro ao criar usuário:", error);
+//     res.status(500).json({ error: "Erro interno do servidor" });
+//   }
+// });
 
-router.put("/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const { name, email, cep } = req.body;
+// router.put("/:id", authenticateToken, async (req, res) => {
+//   const id = parseInt(req.params.id);
+//   const { name, email, cep } = req.body;
 
-  try {
-    const userExists = await prisma.user.findUnique({
-      where: { id: Number(id) },
-    });
+//   try {
+//     const userExists = await prisma.user.findUnique({
+//       where: { id: Number(id) },
+//     });
 
-    if (!userExists) {
-      return res.status(404).json({ error: "Usuário não encontrado" });
-    }
+//     if (!userExists) {
+//       return res.status(404).json({ error: "Usuário não encontrado" });
+//     }
 
-    let endereco = {
-      logradouro: userExists.logradouro,
-      bairro: userExists.bairro,
-      cidade: userExists.cidade,
-      estado: userExists.estado,
-    };
+//     let endereco = {
+//       logradouro: userExists.logradouro,
+//       bairro: userExists.bairro,
+//       cidade: userExists.cidade,
+//       estado: userExists.estado,
+//     };
 
-    if (cep && cep !== userExists.cep) {
-      const novoEndereco = await searchAddress(cep);
-      if (!novoEndereco) {
-        return res
-          .status(400)
-          .json({ error: "CEP inválido ou não encontrado" });
-      }
-      endereco = novoEndereco;
-    }
+//     if (cep && cep !== userExists.cep) {
+//       const novoEndereco = await searchAddress(cep);
+//       if (!novoEndereco) {
+//         return res
+//           .status(400)
+//           .json({ error: "CEP inválido ou não encontrado" });
+//       }
+//       endereco = novoEndereco;
+//     }
 
-    const updateUser = await prisma.user.update({
-      where: { id: Number(id) },
-      data: {
-        name: name || userExists.name,
-        email: email || userExists.email,
-        cep: cep || userExists.cep,
-        logradouro: endereco.logradouro || userExists.logradouro,
-        bairro: endereco.bairro || userExists.bairro,
-        cidade: endereco.cidade || userExists.cidade,
-        estado: endereco.estado || userExists.estado,
-      },
-    });
+//     const updateUser = await prisma.user.update({
+//       where: { id: Number(id) },
+//       data: {
+//         name: name || userExists.name,
+//         email: email || userExists.email,
+//         cep: cep || userExists.cep,
+//         logradouro: endereco.logradouro || userExists.logradouro,
+//         bairro: endereco.bairro || userExists.bairro,
+//         cidade: endereco.cidade || userExists.cidade,
+//         estado: endereco.estado || userExists.estado,
+//       },
+//     });
 
-    res.json(updateUser);
-  } catch (error) {
-    console.error("Erro ao atualizar o usuário:", error);
-    res.status(500).json({ error: "Erro interno do servidor" });
-  }
-});
+//     res.json(updateUser);
+//   } catch (error) {
+//     console.error("Erro ao atualizar o usuário:", error);
+//     res.status(500).json({ error: "Erro interno do servidor" });
+//   }
+// });
 
 module.exports = router;
 
