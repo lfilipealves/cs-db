@@ -1,11 +1,9 @@
 const express = require("express");
 const axios = require("axios");
 const authenticateToken = require("./midleware");
-const prisma = require("./database")
+const prisma = require("./database");
 
 const router = express.Router();
-
-
 
 const searchAddress = async (cep) => {
   try {
@@ -14,6 +12,7 @@ const searchAddress = async (cep) => {
 
     return {
       logradouro: response.data.logradouro,
+      bairro: response.data.bairro,
       cidade: response.data.localidade,
       estado: response.data.uf,
     };
@@ -23,10 +22,8 @@ const searchAddress = async (cep) => {
   }
 };
 
-
 router.get("/", async (req, res) => {
   try {
-
     const users = await prisma.user.findMany();
 
     const usersWithState = await Promise.all(
@@ -35,6 +32,7 @@ router.get("/", async (req, res) => {
         return {
           ...user,
           logradouro: endereco?.logradouro,
+          bairro: endereco?.bairro,
           cidade: endereco?.cidade,
           estado: endereco?.estado,
         };
@@ -47,76 +45,69 @@ router.get("/", async (req, res) => {
   }
 });
 
-
-
-router.get("/:id",  async (req, res) => {
+router.get("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
 
   try {
-
     const user = await prisma.user.findUnique({
       where: { id },
     });
 
-  if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
+    if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
 
+    const endereco = await searchAddress(user.cep);
 
-
-   const endereco = await searchAddress(user.cep)
-
-  res.json({
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    cep: user.cep,
-    logradouro: endereco?.logradouro || "Endereço não encontrado",
-    cidade: endereco?.cidade || "Cidade não encontrada",
-    estado: endereco?.estado || "Estado não encontrado",
-  });
-} catch (error) {
-  console.error("Erro ao buscar usuário:", error);
-  res.status(500).json({error: "Erro interno do servidor"})
-}
-
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      cep: user.cep,
+      logradouro: endereco?.logradouro || "Endereço não encontrado",
+      bairro: endereco?.bairro || "Bairro não encontrado",
+      cidade: endereco?.cidade || "Cidade não encontrada",
+      estado: endereco?.estado || "Estado não encontrado",
+    });
+  } catch (error) {
+    console.error("Erro ao buscar usuário:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
 });
-
-
 
 router.post("/addUser", async (req, res) => {
   console.log("Corpo da requisição recebido:", req.body);
 
   try {
-    const { name, email, cep } = req.body
-  
+    const { name, email, cep } = req.body;
+
     if (!name || !email || !cep) {
-      return res.status(400).json({ error: "Por favor insira nome, email e cep" });
+      return res
+        .status(400)
+        .json({ error: "Por favor insira nome, email e cep" });
     }
 
-  const endereco = await searchAddress(cep);
-  if (!endereco) {
-    return res.status(400).json({ error: "Cep inválido ou não existe" });
+    const endereco = await searchAddress(cep);
+    if (!endereco) {
+      return res.status(400).json({ error: "Cep inválido ou não existe" });
+    }
 
-}
+    const newUser = await prisma.user.create({
+      data: {
+        name,
+        email,
+        cep,
+        logradouro: endereco.logradouro,
+        bairro: endereco.bairro,
+        cidade: endereco.cidade,
+        estado: endereco.estado,
+      },
+    });
 
-  const newUser =  await prisma.user.create({
-    data: {
-    name,
-    email,
-    cep,
-    logradouro: endereco.logradouro,
-    cidade: endereco.cidade,
-    estado: endereco.estado,
-  }
-});
-
-res.status(201).json(newUser);
+    res.status(201).json(newUser);
   } catch (error) {
     console.error("Erro ao criar usuário:", error);
-    res.status(500).json({error: "Erro interno do servidor"});
+    res.status(500).json({ error: "Erro interno do servidor" });
   }
-})
-
-
+});
 
 router.put("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
@@ -124,27 +115,28 @@ router.put("/:id", async (req, res) => {
 
   try {
     const userExists = await prisma.user.findUnique({
-      where: {id: Number(id)},
+      where: { id: Number(id) },
     });
 
     if (!userExists) {
-      return res.status(404).json({error: "Usuário não encontrado"});
+      return res.status(404).json({ error: "Usuário não encontrado" });
     }
-  
+
     let endereco = {
-        logradouro: userExists.logradouro,
-        cidade: userExists.cidade,
-        estado: userExists.estado,
-    }
+      logradouro: userExists.logradouro,
+      bairro: userExists.bairro,
+      cidade: userExists.cidade,
+      estado: userExists.estado,
+    };
 
-
-
-    if(cep && cep !== userExists.cep) {
+    if (cep && cep !== userExists.cep) {
       const novoEndereco = await searchAddress(cep);
-      if(!novoEndereco) {
-        return res.status(400).json({error: "CEP inválido ou não encontrado"})
+      if (!novoEndereco) {
+        return res
+          .status(400)
+          .json({ error: "CEP inválido ou não encontrado" });
       }
-      endereco = novoEndereco
+      endereco = novoEndereco;
     }
 
     const updateUser = await prisma.user.update({
@@ -154,6 +146,7 @@ router.put("/:id", async (req, res) => {
         email: email || userExists.email,
         cep: cep || userExists.cep,
         logradouro: endereco.logradouro || userExists.logradouro,
+        bairro: endereco.bairro || userExists.bairro,
         cidade: endereco.cidade || userExists.cidade,
         estado: endereco.estado || userExists.estado,
       },
@@ -162,13 +155,11 @@ router.put("/:id", async (req, res) => {
     res.json(updateUser);
   } catch (error) {
     console.error("Erro ao atualizar o usuário:", error);
-    res.status(500).json({error: "Erro interno do servidor"});
+    res.status(500).json({ error: "Erro interno do servidor" });
   }
 });
 
-  module.exports = router;
-  
-
+module.exports = router;
 
 //   const userIndex = users.findIndex((u) => u.id === id);
 //   if (userIndex === -1)
@@ -194,4 +185,3 @@ router.put("/:id", async (req, res) => {
 
 //   res.json(users[userIndex]);
 // });
-
