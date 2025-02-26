@@ -24,17 +24,61 @@ const searchAddress = async (cep) => {
 
 router.get("/", async (req, res) => {
   try {
+    // Usando select para garantir que todos os campos sejam buscados corretamente
     const users = await prisma.user.findMany({
-      include: { addresses: true}
+      include: {
+        addresses: {
+          select: {
+            id: true,
+            zipcode: true,
+            street: true,
+            neighborhood: true,
+            number: true,
+            state: true,
+            country: true,
+            title: true,
+            created_At: true,
+            updated_At: true
+
+          }
+        }
+      }
     });
-
-
+  
     res.json(users);
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao buscar usuários:", error });
-    res.status(500).json({error: "Erro ao buscar usuários"});
+  } catch (error) {console.error("Erro ao buscar usuários:", error);
+    res.status(500).json({ error: "Erro ao buscar usuários" });
   }
 });
+
+// Adicione uma rota para buscar os endereços separadamente para depuração
+router.get("/addresses", async (req, res) => {
+  try {
+    const addresses = await prisma.address.findMany();
+    res.json(addresses);
+  } catch (error) {
+    console.error("Erro ao buscar endereços:", error);
+    res.status(500).json({ error: "Erro ao buscar endereços" });
+  }
+});
+
+// Rota para verificar endereços por userId
+// router.get("/user/:id/addresses", async (req, res) => {
+//   try {
+//     const userId = parseInt(req.params.id);
+//     const addresses = await prisma.address.findMany({
+//       where: {
+//         userId: userId
+//       }
+//     });
+//     res.json(addresses);
+//   } catch (error) {
+//     console.error(`Erro ao buscar endereços do usuário ${req.params.id}:`, error);
+//     res.status(500).json({ error: "Erro ao buscar endereços do usuário" });
+//   }
+// });
+
+module.exports = router;
 
 // router.get("/:id", authenticateToken, async (req, res) => {
 //   const id = parseInt(req.params.id);

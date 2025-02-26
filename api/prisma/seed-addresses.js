@@ -1,13 +1,9 @@
+require('dotenv').config({ path: "../.env"});
 const { PrismaClient } = require("@prisma/client");
 const axios = require("axios");
 
 
 const prisma = new PrismaClient();
-
-const userAddresses = await prisma.address.findMany({
-    where: { userId: user.id }
-});
-console.log("Endereços encontrados no banco:", userAddresses);
 
 
 async function searchAddress(cep) {
@@ -18,6 +14,7 @@ async function searchAddress(cep) {
       return {
         street: response.data.logradouro || "",
         neighborhood: response.data.bairro|| "",
+        city: response.data.localidade || "",
         state: response.data.uf|| "",
         country: "Brasil",
       };
@@ -52,9 +49,10 @@ async function searchAddress(cep) {
     for (const addressEntry of addressesData) {
         const user = await prisma.user.findUnique({
             where: {email: addressEntry.email},
+            include: {addresses: true}
         });
 
-        console.log(`Usuário encontrado:`, user);
+        console.log(`Usuário encontrado:`, user ? user.id : "Não encontrado");
 
         if(!user) {
             console.warn(`Usuário com email ${addressEntry.email} não encontrado`);
@@ -66,19 +64,23 @@ async function searchAddress(cep) {
             try {
             const endereco = await searchAddress(address.cep);
             if (!endereco) {
-                console.warn(`⚠️ Dados para o CEP ${address.cep} não encontrados`);
+                console.warn(` Dados para o CEP ${address.cep} não encontrados`);
                         continue;
             }
                 const newAddress = await prisma.address.create({
-                data: {
-
+                    
+                    data: {
                     userId: user.id,
                     zipcode: address.cep,
                     street: endereco.street || "",
+                    number: address.number, 
                     neighborhood: endereco.neighborhood || "",
+                    city: endereco.city || "",
                     state: endereco.state || "",
                     country: endereco.country || "Brasil",
                     title: address.title,
+
+
 
                 },
                 });
