@@ -24,6 +24,7 @@ const searchAddress = async (cep) => {
 
 router.get("/", async (req, res) => {
   try {
+
     // Usando select para garantir que todos os campos sejam buscados corretamente
     const users = await prisma.user.findMany({
       include: {
@@ -51,7 +52,8 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Adicione uma rota para buscar os endereços separadamente para depuração
+// Rota para buscar somente os endereços
+
 router.get("/addresses", async (req, res) => {
   try {
     const addresses = await prisma.address.findMany();
@@ -63,160 +65,209 @@ router.get("/addresses", async (req, res) => {
 });
 
 // Rota para verificar endereços por userId
-// router.get("/user/:id/addresses", async (req, res) => {
-//   try {
-//     const userId = parseInt(req.params.id);
-//     const addresses = await prisma.address.findMany({
-//       where: {
-//         userId: userId
-//       }
-//     });
-//     res.json(addresses);
-//   } catch (error) {
-//     console.error(`Erro ao buscar endereços do usuário ${req.params.id}:`, error);
-//     res.status(500).json({ error: "Erro ao buscar endereços do usuário" });
-//   }
-// });
+router.get("/addresses/:id", async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const addresses = await prisma.address.findMany({
+      where: {
+        userId: userId
+      }
+    });
+    res.json(addresses);
+  } catch (error) {
+    console.error(`Erro ao buscar endereços do usuário ${req.params.id}:`, error);
+    res.status(500).json({ error: "Erro ao buscar endereços do usuário" });
+  }
+});
+
+
+
+// Rota para buscar o user pelo id
+
+router.get("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id },
+      include: {addresses: true}
+    });
+
+    if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
+    
+    console.log("Usuário encontrado", user.id, user.name);
+
+    const userAddress = user.addresses[0];
+
+    if (!userAddress) {
+     return res.status(404).json({error: "Endereço do usuário não encontrado"});
+    }
+
+    console.log("Zipcode do usuário:", userAddress.zipcode)
+
+    const enderecos = await Promise.all(
+      user.addresses.map(async (address) => {
+        const cepInfo = await searchAddress(address.zipcode);
+        return {
+          id: address.id,
+          zipcode: address.zipcode,
+          street: cepInfo?.street || "Endereço não encontrado",
+          neighborhood: cepInfo?.neighborhood || "Bairro não encontrado",
+          city: cepInfo?.city || "Cidade não encontrado",
+          state: cepInfo?.state || "Estado não encontrado",
+          country: "Brasil"
+        };
+
+      })
+    );
+
+  
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      addresses: enderecos
+    });
+  } catch (error) {
+    console.error("Erro ao buscar usuário:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
+});
+
+// Usado para adicionar um novo Usuário
+
+router.post("/addUser", async (req, res) => {
+  console.log("Corpo da requisição recebido:", req.body);
+
+  try {
+    const { name, email, zipcode } = req.body;
+
+    if (!name || !email || !zipcode) {
+      return res
+        .status(400)
+        .json({ error: "Por favor insira nome, email e cep" });
+    }
+
+    const endereco = await searchAddress(zipcode);
+    if (!endereco) {
+      return res.status(400).json({ error: "Cep inválido ou não existe" });
+    }
+
+    const newUser = await prisma.user.create({
+      data: {
+        name,
+        email,
+        zipcode,
+        street: endereco.logradouro,
+        neighborhood: endereco.bairro,
+        city: endereco.cidade,
+        state: endereco.estado,
+        country: "Brasil"
+      },
+    });
+
+    res.status(201).json(newUser);
+  } catch (error) {
+    console.error("Erro ao criar usuário:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
+});
+
+router.put("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { name, email } = req.body;
+
+  try {
+    // Busca o usuário e seus endereços
+    const userExists = await prisma.user.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!userExists) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    // Atualiza os dados do usuário
+    const updatedUser = await prisma.user.update({
+      where: { id: Number(id) },
+      data: {
+        name: name || userExists.name,
+        email: email || userExists.email,
+      },
+      include: { addresses: true }, 
+    });
+
+    res.json(updatedUser);
+  } catch (error) {
+    console.error("Erro ao atualizar o usuário:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
+});
+
+
+router.put("/:userId/address/:addressId", async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  const addressId = parseInt(req.params.addressId);
+  const { zipcode, street, neighborhood, city, state, country, title } = req.body;
+
+  try {
+    const addressExists = await prisma.address.findFirst({
+      where: { id: addressId, userId: userId },
+    });
+
+    if (!addressExists) {
+      return res.status(404).json({ error: "Endereço não encontrado para este usuário" });
+    }
+
+    let updateData = {
+      zipcode: zipcode || addressExists.zipcode,
+      street: street || addressExists.street,
+      neighborhood: neighborhood || addressExists.neighborhood,
+      city: city || addressExists.city,
+      state: state || addressExists.state,
+      title: title || addressExists.title,
+      country: "Brasil",
+    };
+
+    console.log("📦 Dados recebidos no body:", req.body);
+    console.log("🔢 CEP recebido:", zipcode);
+    console.log("📌 CEP no banco:", addressExists.zipcode);
+    console.log("❓ CEPs são diferentes?", zipcode !== addressExists.zipcode);
+
+    // Apenas busca um novo endereço se o CEP for diferente do banco
+    if (zipcode) { 
+      console.log("🟡 CEP diferente detectado! Buscando novo endereço para:", zipcode);
+
+      const newAddress = await searchAddress(zipcode);
+      console.log("🔍 Resultado da busca:", newAddress);
+
+      if (!newAddress) {
+        return res.status(400).json({ error: "CEP inválido ou não encontrado" });
+      }
+
+      updateData = {
+        ...updateData,
+        street: newAddress.street || addressExists.street,
+        neighborhood: newAddress.neighborhood || addressExists.neighborhood,
+        city: newAddress.city || addressExists.city,
+        state: newAddress.state || addressExists.state,
+      };
+    }
+
+    console.log("🟢 Dados antes da atualização:", updateData);
+
+    const updateAddresses = await prisma.address.update({
+      where: { id: addressId },
+      data: updateData,
+    });
+
+    res.json(updateAddresses);
+  } catch (error) {
+    console.error("Erro ao atualizar o endereço:", error);
+    res.status(500).json({ error: "Erro interno do servidor" });
+  }
+});
+
 
 module.exports = router;
-
-// router.get("/:id", authenticateToken, async (req, res) => {
-//   const id = parseInt(req.params.id);
-
-//   try {
-//     const user = await prisma.user.findUnique({
-//       where: { id },
-//     });
-
-//     if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
-
-//     const endereco = await searchAddress(user.cep);
-
-//     res.json({
-//       id: user.id,
-//       name: user.name,
-//       email: user.email,
-//       cep: user.cep,
-//       logradouro: endereco?.logradouro || "Endereço não encontrado",
-//       bairro: endereco?.bairro || "Bairro não encontrado",
-//       cidade: endereco?.cidade || "Cidade não encontrada",
-//       estado: endereco?.estado || "Estado não encontrado",
-//     });
-//   } catch (error) {
-//     console.error("Erro ao buscar usuário:", error);
-//     res.status(500).json({ error: "Erro interno do servidor" });
-//   }
-// });
-
-// router.post("/addUser", authenticateToken, async (req, res) => {
-//   console.log("Corpo da requisição recebido:", req.body);
-
-//   try {
-//     const { name, email, cep } = req.body;
-
-//     if (!name || !email || !cep) {
-//       return res
-//         .status(400)
-//         .json({ error: "Por favor insira nome, email e cep" });
-//     }
-
-//     const endereco = await searchAddress(cep);
-//     if (!endereco) {
-//       return res.status(400).json({ error: "Cep inválido ou não existe" });
-//     }
-
-//     const newUser = await prisma.user.create({
-//       data: {
-//         name,
-//         email,
-//         cep,
-//         logradouro: endereco.logradouro,
-//         bairro: endereco.bairro,
-//         cidade: endereco.cidade,
-//         estado: endereco.estado,
-//       },
-//     });
-
-//     res.status(201).json(newUser);
-//   } catch (error) {
-//     console.error("Erro ao criar usuário:", error);
-//     res.status(500).json({ error: "Erro interno do servidor" });
-//   }
-// });
-
-// router.put("/:id", authenticateToken, async (req, res) => {
-//   const id = parseInt(req.params.id);
-//   const { name, email, cep } = req.body;
-
-//   try {
-//     const userExists = await prisma.user.findUnique({
-//       where: { id: Number(id) },
-//     });
-
-//     if (!userExists) {
-//       return res.status(404).json({ error: "Usuário não encontrado" });
-//     }
-
-//     let endereco = {
-//       logradouro: userExists.logradouro,
-//       bairro: userExists.bairro,
-//       cidade: userExists.cidade,
-//       estado: userExists.estado,
-//     };
-
-//     if (cep && cep !== userExists.cep) {
-//       const novoEndereco = await searchAddress(cep);
-//       if (!novoEndereco) {
-//         return res
-//           .status(400)
-//           .json({ error: "CEP inválido ou não encontrado" });
-//       }
-//       endereco = novoEndereco;
-//     }
-
-//     const updateUser = await prisma.user.update({
-//       where: { id: Number(id) },
-//       data: {
-//         name: name || userExists.name,
-//         email: email || userExists.email,
-//         cep: cep || userExists.cep,
-//         logradouro: endereco.logradouro || userExists.logradouro,
-//         bairro: endereco.bairro || userExists.bairro,
-//         cidade: endereco.cidade || userExists.cidade,
-//         estado: endereco.estado || userExists.estado,
-//       },
-//     });
-
-//     res.json(updateUser);
-//   } catch (error) {
-//     console.error("Erro ao atualizar o usuário:", error);
-//     res.status(500).json({ error: "Erro interno do servidor" });
-//   }
-// });
-
-module.exports = router;
-
-//   const userIndex = users.findIndex((u) => u.id === id);
-//   if (userIndex === -1)
-//     return res.status(404).json({ error: "Usuário não encontrado" });
-
-//   if (!name || !email || !cep) {
-//     return res.status(400).json({ error: "Por favor insira nome e email" });
-//   }
-
-//   const endereco = await searchAddress(cep);
-//   if (!endereco)
-//     return res.status(400).json({ error: "Cep inválido ou não existe" });
-
-//   users[userIndex] = {
-//     id,
-//     name,
-//     email,
-//     cep,
-//     logradouro: endereco.logradouro,
-//     cidade: endereco.cidade,
-//     estado: endereco.estado,
-//   };
-
-//   res.json(users[userIndex]);
-// });
