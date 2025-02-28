@@ -2,8 +2,11 @@ const express = require("express");
 const axios = require("axios");
 const authenticateToken = require("./midleware");
 const prisma = require("./database");
+const app = express();
 
 const router = express.Router();
+app.use(express.json());
+
 
 const searchAddress = async (cep) => {
   try {
@@ -42,7 +45,8 @@ router.get("/", async (req, res) => {
             updated_At: true
 
           }
-        }
+        },
+        phones: true
       }
     });
   
@@ -90,7 +94,9 @@ router.get("/:id", async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id },
-      include: {addresses: true}
+      include: {addresses: true, phones: true}
+     
+
     });
 
     if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
@@ -127,7 +133,8 @@ router.get("/:id", async (req, res) => {
       id: user.id,
       name: user.name,
       email: user.email,
-      addresses: enderecos
+      addresses: enderecos,
+      phones: user.phones
     });
   } catch (error) {
     console.error("Erro ao buscar usuário:", error);
@@ -207,9 +214,10 @@ router.put("/:id", async (req, res) => {
 
 
 router.put("/:userId/address/:addressId", async (req, res) => {
+
   const userId = parseInt(req.params.userId);
   const addressId = parseInt(req.params.addressId);
-  const { zipcode, street, neighborhood, city, state, country, title } = req.body;
+  const { zipcode, street, number, neighborhood, city, state, country, title } = req.body;
 
   try {
     const addressExists = await prisma.address.findFirst({
@@ -223,6 +231,7 @@ router.put("/:userId/address/:addressId", async (req, res) => {
     let updateData = {
       zipcode: zipcode || addressExists.zipcode,
       street: street || addressExists.street,
+      number: number || addressExists.number,
       neighborhood: neighborhood || addressExists.neighborhood,
       city: city || addressExists.city,
       state: state || addressExists.state,
@@ -269,5 +278,137 @@ router.put("/:userId/address/:addressId", async (req, res) => {
   }
 });
 
+
+router.post("/:userId/address", async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  const {zipcode, street, number, neighborhood, city, state, title} = req.body
+  
+  
+  try {
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId},
+    });
+
+    if(!userExists) {
+      return res.status(404).json({error: "Usuário não encontrado"});
+
+    }
+
+    let addressData = {
+      userId,
+      zipcode,
+      street,
+      number,
+      neighborhood,
+      city,
+      state,
+      title: title || "Meu endereço",
+      country: "Brasil",
+    };
+
+    console.log("Dados recebidos no body:", req.body);
+
+    if(zipcode) {
+      console.log("Buscando endereço para o CEP:", zipcode);
+
+      const addressInfo = await searchAddress(zipcode);
+      console.log("Resultado da busca:", addressInfo);
+
+      if(!addressInfo){
+        return res.status(400).json({error: "CEP inválido ou não encontrado"});
+      }
+
+      addressData = {
+        ...addressData,
+        street: street || addressInfo.street,
+        neighborhood: neighborhood || addressInfo.neighborhood,
+        city: city || addressInfo.city,
+        state: state || addressInfo.state,
+      };
+
+    } else {
+      if(!street || !city || !state) {
+        return res.status(400).json({
+          error: "É necessário fornecer CEP ou os campos: rua, cidade e estado"
+        });
+      }
+    }
+    
+    const newAddress = await prisma.address.create({
+      data: addressData
+    });
+
+    res.status(201).json(newAddress);
+  } catch (error) {
+    console.error("Erro ao adicionar endereço:", error);
+    res.status(500).json({error: "Erro interno do servidor"})
+  }
+});
+
+router.post("/:userId/phone", async(req, res)=> {
+  const userId = parseInt(req.params.userId);
+  const { phone, phoneTitle } = req.body;
+
+  try {
+    const userExists = await prisma.user.findUnique({
+      where: {id: userId},
+
+    });
+
+    if(!userExists){
+      return res.status(404).json({error: "Usuario não encontrado"});
+    }
+
+    if(!phone || phone.trim() === "") {
+      return res.status(400).json({error: "Número de telefone é obrigatório"});
+    }
+
+   const newPhone = await prisma.phone.create({
+    data: {
+      userId,
+      number: phone,
+      type: phoneTitle || "celular"
+    }
+   });
+   
+   res.status(201).json(newPhone);
+  } catch (error) {
+    console.error("Erro ao adicionar telefone:", error);
+    res.status(500).json({error: "Erro interno do servidor"});
+  }
+});
+
+router.put("/:userId/phone/:phoneId", async (req,res) => {
+  const userId = parseInt(req.params.userId);
+  const phoneId = parseInt(req.params.phoneId);
+  const {phone, phoneTitle} = req.body;
+
+  try {
+    const phoneExists = await prisma.phone.findUnique({
+      where: {id: phoneId},
+    });
+
+    if(!phoneExists || phoneExists.userId !== userId){
+      return res.status(404).json({error: "Telefone não encontrado para este usuário"});
+    }
+
+    if (!phone || phone.trim() === ""){
+      return res.status(400).json({error: "Número de telefone é obrigatório"});
+    }
+
+    const updatePhone = await prisma.phone.update({
+      where: {id: phoneId},
+      data: {
+        number: phone,
+        type: phoneTitle || "Celular",
+      },
+    });
+
+    res.status(200).json(updatePhone);
+  } catch (error) {
+    console.error("Erro ao atualizar telefone:", error);
+    res.status(500).json({error: "Erro interno do servidor"});
+  }
+});
 
 module.exports = router;

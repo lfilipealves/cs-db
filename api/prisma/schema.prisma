@@ -8,10 +8,21 @@ datasource db {
 }
 
 model User {
-  id        Int       @id @default(autoincrement())
-  name      String?
-  email     String    @unique
-  addresses Address[]
+  id         Int       @id @default(autoincrement())
+  name       String?
+  email      String    @unique
+  phones     Phone[]
+  addresses  Address[]
+}
+
+model Phone {
+  id         Int      @id @default(autoincrement())
+  number     String
+  type       String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     Int
+  created_At DateTime @default(now())
+  updated_At DateTime @updatedAt
 }
 
 model Address {
